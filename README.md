@@ -1,20 +1,23 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+### Introduction 
+Contains working repos for data science projects currently in development
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+### Ongoing Projects 
+1.	Improve Streamlit and OpenAI item recommender project
+2.	Access databses for Retailyze project and begin project
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+### Intial Learning and Cooperation
+Goals: 
+1.	Connect git to Pycharm and create standard for merging
+2.	Holding regular code reviews
+3.	Integration of repos with as part of a pipeling
+4.	Improve and standardize comments
+5.  Document everything for future projects
+6.  Learn and use Markdown
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+### Existing Builds and Tests 
+1. Item Recommender
+2. Retailyze
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+### Contribute
+Explain how other users and developers can contribute to make your code better. 
+Nicely.
