@@ -3,8 +3,9 @@ import pandas as pd
 import os
 import shutil
 import tempfile
+import azureopenai
 #from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from openai import AzureOpenAI
+# from openai import azureopenai
 import time
 import itertools
 import sys
@@ -13,13 +14,13 @@ import numpy as np
 #token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
 
     # API info needed to call on OpenAI model
-#AzureOpenAI.api_key = 'd56952cf138e4c09a5f113682ce1b540'
-#AzureOpenAI.api_base = 'https://adv-datascience-west.openai.azure.com/'
-#AzureOpenAI.api_type = 'azure'
-#AzureOpenAI.api_version = '2023-12-01-preview'
+#azureopenai.api_key = 'd56952cf138e4c09a5f113682ce1b540'
+#azureopenai.api_base = 'https://adv-datascience-west.openai.azure.com/'
+#azureopenai.api_type = 'azure'
+#azureopenai.api_version = '2023-12-01-preview'
 deployment_name='item-recommender-main'
 
-client = AzureOpenAI(
+client = azureopenai(
     # https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning
     api_version='2023-12-01-preview',
     # https://learn.microsoft.com/en-us/azure/cognitive-services/openai/how-to/create-resource?pivots=web-portal#create-a-resource
