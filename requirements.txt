@@ -1,0 +1,8 @@
+streamlit~=1.31.1
+pandas~=2.0.1
+azureopenai~=0.0.1
+numpy~=1.23.5
+DBUtils~=3.0.3
+openai~=0.27.6
+requests~=2.29.0
+spark~=0.2.1
