@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import shutil
 import tempfile
-import azureopenai
+from openai import AzureOpenAI
 #from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 # from openai import azureopenai
 import time
@@ -20,7 +20,7 @@ import numpy as np
 #azureopenai.api_version = '2023-12-01-preview'
 deployment_name='item-recommender-main'
 
-client = azureopenai(
+client = AzureOpenAI(
     # https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning
     api_version='2023-12-01-preview',
     # https://learn.microsoft.com/en-us/azure/cognitive-services/openai/how-to/create-resource?pivots=web-portal#create-a-resource
@@ -32,99 +32,21 @@ client = azureopenai(
 
 # Function for calling the backend code
 # Input csv will be df_awg after adding nulls
-def backend_main(df_input):
+def backend_main(df_input, column_mapping):
     """
     Backend code for the Item Recommender placed into a single function for easy insertion into frontend code.
     df_input should be the raw data directly from the user input on the frontend
+    column_mapping is the user-inputted mappings converted into a Pandas dataframe
     -------
+    Returns:
     dataframe with no null values
     """
     # Convert the input to Pandas dataframe - for testing purposes, just input the df directly
     # df_input = pd.read_csv(input_csv)
-
-    # Pre-processing - hard coding these values for now
-    target_columns = ['ADV_Brand', 'ADV_Category', 'ADV_SubCategory', 'ADV_ItemDescrip', 'ADV_ItemUPC', 'ADV_CaseUPC10',
-                      'ADV_Size', 'ADV_StorePack']
-    source_columns = ['Brand', 'Category Name', 'Sub Category Name', 'Item Description', 'UPCItem', 'UPCCase', 'Size',
-                      'Store Pack']
-    # Separate this table into one free of null values and one containing nulls
-    df_test = df_input[~(df_input.notna().all(axis=1))]
-    df_train = df_input[df_input.notna().all(axis=1)]
-
-    # Make a dictionary to map the target column to the source data needed
-    # target_to_source_dfs = {target : pd.DataFrame(df_train[column]) for (target, column) in zip(target_columns, source_columns)}
-
-    # Main loop
-    # Put the finished data in an empty dataframe to avoid Pandas warnings
-    imputed_target_df = pd.DataFrame()
-
-    # Loop through the dataframe column-wise and call the model to impute nulls in the ADV_ columns
-    for n, column in enumerate(target_columns):
-        # Basic prompt setup - plug in column names from here from frontend
-        # To-do - find a way to write this prompt dynamically based on the target_to_source_dfs dict or the frontend directly
-        prompt = f"""
-            The following data is a column of a dataset of product attributes called the AWG Item List: {df_train[[source_columns[n]]].to_string(justify='center', sparsify=False, index=False)} 
-            The missing item attribution values need to be filled in. Here's how the columns map to each other:
-            the ADV_Category column is based on the Category Name column,
-            the ADV_Brand column is based on the Brand column,
-            the ADV_SubCategory column is based on the Sub Category Name column,
-            the ADV_ItemDescrip column is based on the Item Description column,
-            the ADV_Size column is based on the Size column,
-            the ADV_Store_Pack cloumn is based on the Store Pack column,
-            the ADV_ItemUPC column is copied from the UPCItem column and should be formatted as a string (not in scientific notation),
-            the ADV_CaseUPC10 column is exactly the same as the UPCCase column and should be formatted as a string (not in scientific notation),
-            and the RptLvlFilter column values can be left null. 
-
-            Autocomplete the data in the {column} column of the following validation sample from the AWG Item List based on the column mappings listed:
-            {df_test[[column]].to_string(justify='center', sparsify=False, index=False)} and format your answer into a series with no header or empty rows. The series will be appended to a new dataframe for export.
-            You do not need to explain how to impute data or your methods for imputation - just output the completed data.
-        """
-        # While loop to prevent errors if the API doesn't connect successfully
-        retries = 3
-        while retries > 0:
-            try:
-                print("Imputing...")
-                # API call to OpenAI GPT-4 deployment
-
-                response = client.chat.completions.create(
-                    model = deployment_name,
-                    temperature=1,
-                    messages=[
-                        {"role": "system", "content": "You are a model used to fill in missing data."},
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                data_out = response.model_dump_json(indent=2)
-                print(f"Imputed in column {target_columns[n]}")
-                st.write(f"Imputed in column {target_columns[n]}")
-                time.sleep(2)
-                break  # End the while loop after it succeeds in calling the API
-            except Exception as e:
-                print(e)
-                retries -= 1
-                if retries > 0:
-                    print('Timeout error, retrying...')
-                    st.write('Timeout error, retrying...')
-                    time.sleep(5)
-            else:
-                print('API is not responding, all retries exhausted. Raising exception...')
-                st.write('API is not responding, all retries exhausted. Raising exception...')
-                raise ValueError(
-                    "Time out error - try restarting the script and checking your connection to OpenAI Studio")
-
-        # Turn the output into a Pandas series
-        rows = data_out.split('\n')
-        data_out_series = pd.Series(rows[1:], name=column)
-
-        # Append the series to the output df
-        imputed_target_df[column] = data_out_series
-
-    # Recombine the source column test data with the imputed data (filling in nulls)
-    df_test.combine_first(imputed_target_df)
-
-    # Now combine this with the training data to recreate the original dataset but filled
-    df_output = pd.concat([df_train, df_test], axis=0)
-
+    for ind in column_mapping.index:
+        df_input[column_mapping['To'][ind]] = df_input[column_mapping['To'][ind]].fillna(df_input[column_mapping['From'][ind]])
+        df_output = df_input.copy()
+    
     return df_output
 
 
@@ -151,7 +73,7 @@ imputation_started = False
 
 #this callback unfreezes the Add Columns to SAved Column Pairs? button in the event that someone clicks the reset saved column pairs button
 def reset_saved_columns_pair_callback():
-    st.session_state.button2 = not st.session_state.button2
+    st.session_state.button2 = False #not st.session_state.button2
 
 #this callback unfreezes all the buttons
 def cancel_callback():
@@ -203,6 +125,7 @@ def frontend_main():
                 if st.button("**Begin Imputation**", key=1, disabled=st.session_state.button1): #, on_click=btn1_callback()):
                     imputation_started = True
                     st.session_state.button1 = True
+                    st.session_state.button2 = True
                 else:
                     st.session_state.button1 = False
 
@@ -229,7 +152,7 @@ def frontend_main():
 
                     #saved_columns.append(df_template_input)
                     if(st.sidebar.button("Add columns to Saved Column Pairs?", disabled=st.session_state.button2)):
-                        st.session_state.button2 = True
+                        #st.session_state.button2 = True
                         for i in df_template_input.index:
                             saved_template_columns.append([df_template_input.iloc[i,0], df_template_input.iloc[i,1]])
                             st.session_state["columnsList"].append([df_template_input.iloc[i,0], df_template_input.iloc[i,1]])
@@ -253,7 +176,7 @@ def frontend_main():
                 #button to allow the user to reset the saved column pairs
                 if st.sidebar.button('Reset Saved Column Pairs', key=4, disabled=st.session_state.button1, on_click = reset_saved_columns_pair_callback()):
                     saved_columns.clear()
-                    st.session_state.button2 = False
+                    #st.session_state.button2 = False
                     st.session_state["columnsList"].clear()
 
                 #makes sure there are a unique set of column pairs for the user
@@ -308,7 +231,7 @@ def frontend_main():
             #Imputation process Kicks off
         with st.spinner("**Imputation process started...**"):
             #time.sleep(5)  ##remove this once the preview piece is done
-            finalOutput = backend_main(finalDF)
+            finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
             #kick off the preview section
             #st.write("Here is a quick preview of what the results will look like when finished:")
             #st.write("Do you want to continue?")
