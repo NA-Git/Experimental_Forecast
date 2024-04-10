@@ -52,17 +52,17 @@ def backend_plus(df_input, issues, column_mapping):
     Dataframe with no null values or data inconsistencies
 
     """
-    # Create new nulls based on frontend input
-    df_input[column_mapping['To']].replace(issues, np.nan, inplace=True)
+    # convert everything to strings to be safe
+    df_input = df_input.astype('str') 
     
-    #df_input = df_input.astype('str') # convert everything to strings to be safe
+    # Create new nulls based on frontend input
+    df_input.replace(issues, np.nan, inplace=True)
     
     # Run through datawig now that the first step is done - remove additional nulls
-    #SimpleImputer.complete(data_frame=df_input, inplace=True
-                           #,precision_threshold=0.9
-                           #,output_path='.\item_recommender' # Specify where model data is stored to prevent errors
-                          #)
-    time.sleep(180)
+    SimpleImputer.complete(data_frame=df_input, inplace=True
+                           ,precision_threshold=0.9
+                           ,output_path="../datawig_temp/" # Specify where model data is stored to prevent errors
+                          )
     # Return cleaned dataframe
     df_output = df_input.copy()
     return df_output
@@ -163,20 +163,20 @@ def frontend_main():
             def color_null(val):
                 color = '#d65f5f' if (pd.isnull(val)) else 'white'
                 return f'background-color: {color}'
-            #finalDF_withFormatting.Styler.map(lambda cell: 'color:red' if cell == 'null' else '')
-            #st.dataframe(finalDF_withFormatting.style.applymap(color_null))
+            # finalDF_withFormatting.Styler.map(lambda cell: 'color:red' if cell == 'null' else '')
+            # st.dataframe(finalDF_withFormatting.style.applymap(color_null))
 
-            # with st.expander("**Imported Dataset**"):
-            #     st.dataframe(finalDF_withFormatting.style.applymap(color_null), column_config={
-            #         "Item Code": st.column_config.TextColumn(),
-            #         "UPCItem": st.column_config.TextColumn(),
-            #         "UPCCase": st.column_config.TextColumn(),
-            #         "ADV_ItemUPC": st.column_config.TextColumn(),
-            #         "ADV_CaseUPC10": st.column_config.TextColumn(),
-            #     },
-            #                  hide_index=True,
-            #                  )
-            #     #st.write(df_input)
+            with st.expander("**Imported Dataset**"):
+                st.dataframe(finalDF_withFormatting.style.applymap(color_null), column_config={
+                    "Item Code": st.column_config.TextColumn(),
+                    "UPCItem": st.column_config.TextColumn(),
+                    "UPCCase": st.column_config.TextColumn(),
+                    "ADV_ItemUPC": st.column_config.TextColumn(),
+                    "ADV_CaseUPC10": st.column_config.TextColumn(),
+                },
+                              hide_index=True,
+                              )
+                #st.write(df_input)
 
             # Check if the DataFrame is not empty and contains columns
             if not df_input.empty:
@@ -299,9 +299,7 @@ def frontend_main():
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
             
             # Datawig imputation
-            finalOutput = backend_plus(df_input=finalOutput, issues=[0], column_mapping=savedColumnsDisplayed)
-            upcs = pd.read_csv('./upcs_datawig_out.csv')
-            finalOutput['ADV_ItemUPC'] = upcs
+            finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
             #kick off the preview section
             #st.write("Here is a quick preview of what the results will look like when finished:")
             #st.write("Do you want to continue?")
@@ -330,6 +328,9 @@ def frontend_main():
 
         # Save the renamed file to the temporary directory
         finalOutput.to_csv(new_filename, index=False)
+        
+        # convert everything to strings to be safe
+        finalDF = finalDF.astype('str') 
 
         finalOutputMerged= pd.merge(finalDF, finalOutput, how = "left", on=["Item Code"])
         
@@ -361,7 +362,7 @@ def frontend_main():
             else:
                 return ''
 
-        styled_df = finalOutput.copy()
+        styled_df = finalOutputDisplayed.copy()
         #for col in finalDF.columns:
          #   for idx in finalDF.index:
           #      styled_df.loc[idx, col].format((color_cells(finalDF.at[idx, col], finalOutputDisplayed.at[idx, col])))
@@ -413,7 +414,6 @@ def frontend_main():
 
         # Clean up the temporary directory when the app is done
         shutil.rmtree(temp_dir)
-
         # Save the renamed file to the temporary directory
         #finaldf.to_csv(finalFileName, index=False)
 
