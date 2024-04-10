@@ -6,10 +6,10 @@ import tempfile
 #from openai import AzureOpenAI
 #from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 # from openai import azureopenai
-import time
+#import time
 import itertools
 import sys
-import jellyfish
+#import jellyfish
 from jarowinkler import jarowinkler_similarity
 import numpy as np
 from datawig import SimpleImputer
@@ -19,20 +19,14 @@ st.set_page_config(layout = "wide")
 
 #token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
 
-    # API info needed to call on OpenAI model
-#azureopenai.api_key = 'd56952cf138e4c09a5f113682ce1b540'
-#azureopenai.api_base = 'https://adv-datascience-west.openai.azure.com/'
-#azureopenai.api_type = 'azure'
-#azureopenai.api_version = '2023-12-01-preview'
-#deployment_name='item-recommender-main'
-
+# API info needed to call on OpenAI model
 #client = AzureOpenAI(
     # https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#rest-api-versioning
 #    api_version='2023-12-01-preview',
     # https://learn.microsoft.com/en-us/azure/cognitive-services/openai/how-to/create-resource?pivots=web-portal#create-a-resource
-#    azure_endpoint='https://adv-datascience-west.openai.azure.com/',
+#    azure_endpoint='',
    # azure_ad_token_provider=token_provider,
-#    api_key= 'd56952cf138e4c09a5f113682ce1b540'
+#    api_key= ''
 #)
 
 # Secondary backend function for additional imputation needs
