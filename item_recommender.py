@@ -12,6 +12,7 @@ import sys
 from jarowinkler import jarowinkler_similarity
 import numpy as np
 from datawig import SimpleImputer
+from mxnet.base import MXNetError
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
@@ -258,7 +259,12 @@ def frontend_main():
             # Column mapping imputation
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
             # Datawig imputation
-            finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            # Add a try-except block here to increase code stability
+            try:
+                finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            except (FileNotFoundError, MXNetError): # Ignore the "directory not found" errors since they don't seem to impact model output
+                finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+                
             #kick off the preview section
             #st.write("Here is a quick preview of what the results will look like when finished:")
             #st.write("Do you want to continue?")
