@@ -9,10 +9,10 @@ import tempfile
 #import time
 import itertools
 import sys
-#import jellyfish
 from jarowinkler import jarowinkler_similarity
 import numpy as np
 from datawig import SimpleImputer
+from mxnet.base import MXNetError
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
@@ -141,24 +141,19 @@ def frontend_main():
     saved_template_columns = []
 
     finalDF = pd.DataFrame()
-    finalDF_Nulls = pd.DataFrame()
+    # finalDF_Nulls = pd.DataFrame()
 
     #Once a file has been uploaded, triggers this portion of the code
     if uploaded_file is not None:
-        #try:
-            # Attempt to read the CSV file with different settings
             df_input = pd.read_csv(uploaded_file, header=0)  # Try specifying header=0
             finalDF = df_input
 
-            finalDF_Nulls = df_input.isna()
+            inputDF_Nulls = df_input.isna()
             finalDF_withFormatting = finalDF
-            finalDF_withFormatting.style.highlight_null('red')
 
             def color_null(val):
                 color = '#d65f5f' if (pd.isnull(val)) else 'white'
                 return f'background-color: {color}'
-            # finalDF_withFormatting.Styler.map(lambda cell: 'color:red' if cell == 'null' else '')
-            # st.dataframe(finalDF_withFormatting.style.applymap(color_null))
 
             with st.expander("**Imported Dataset**"):
                 st.dataframe(finalDF_withFormatting.style.applymap(color_null), column_config={
@@ -168,9 +163,8 @@ def frontend_main():
                     "ADV_ItemUPC": st.column_config.TextColumn(),
                     "ADV_CaseUPC10": st.column_config.TextColumn(),
                 },
-                              hide_index=True,
-                              )
-                #st.write(df_input)
+                             hide_index=True,
+                             )
 
             # Check if the DataFrame is not empty and contains columns
             if not df_input.empty:
@@ -182,12 +176,6 @@ def frontend_main():
                 else:
                     st.session_state.button1 = False
 
-                #if st.button("**Imputation Preview**", key=2, disabled=st.session_state.button1):
-                #    imputation_preview = True
-                 #   st.session_state.button1 = True
-                #else:
-                 #   st.session_state.button1 = False
-
                 # Displays the column names with an expander button to collapse them
                 columnsDisplayed = pd.DataFrame(df_input.columns.tolist())
                 columnsDisplayed.columns = ["Column Names"]
@@ -195,7 +183,7 @@ def frontend_main():
                 expander = st.sidebar.expander("**Column Names Detected**", expanded=False)
                 expander.table(columnsDisplayed)
 
-                sc = pd.DataFrame()
+                # sc = pd.DataFrame()
 
                 #section where the user can upload a template file of column mappings
                 template_file = st.sidebar.file_uploader("**Upload a template file**", type=["csv"], disabled=st.session_state.button1)  # , on_change=saved_columns.clear())
@@ -244,38 +232,18 @@ def frontend_main():
                     savedColumnsDisplayed.columns = ['From', 'To']
                     st.sidebar.dataframe(savedColumnsDisplayed)
 
-                    # st.sidebar.subheader("Are there columns you would like to exclude from being imputed?")
-                    #st.sidebar.multiselect(label='**Are there columns you would like to exclude from being imputed?**'
-                      #                     , options=columnsDisplayed)
             else:
                 st.warning("**The uploaded CSV file is empty or has no columns.**")
-
-    #Check if the imputation preview has been started
-    #if imputation_preview:
-        # cancels imputation preview and let's the user start over
-     #   if (st.button('**Cancel Preview**')):
-          #  st.session_state.list.clear()
-
-        #st.write("**Imputation preview started...**")
-      #  with st.spinner("**Imputation preview started...**"):
-       #     time.sleep(5)
-        #    imputation_preview_button_flag = True
-            #st.button('**Cancel Preview**', st.empty=True)
-        #st.success('Done!')
-        #if(imputation_preview_button_flag):
-         #   st.session_state.list.clear()
-
 
 
     # Check if imputation has started
     if imputation_started:
         # Perform imputation or any desired action here
-        # Prints a message letting the user know imputation has started
-        #st.spinner("**Imputation preview started...**")
-        #st.write("**Imputation process started...**")
+
+        originalDS = df_input
 
         ##pulling in the columns pairs list from the front end section above
-        savedColumnMapping = pd.DataFrame(st.session_state["columnsList"])
+        # savedColumnMapping = pd.DataFrame(st.session_state["columnsList"])
 
         #cancels imputation and let's the user start over
         if(st.button('**Cancel**', on_click=cancel_callback())):
@@ -286,14 +254,17 @@ def frontend_main():
             sys.exit('User canceled imputation. Resetting...')
 
         #Imputation process Kicks off
+        # Prints a message letting the user know imputation has started
         with st.spinner("**Imputing...**"):
-            #time.sleep(5)  ##remove this once the preview piece is done
-            
             # Column mapping imputation
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
-            
             # Datawig imputation
-            finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            # Add a try-except block here to increase code stability
+            try:
+                finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            except (FileNotFoundError, MXNetError): # Ignore the "directory not found" errors since they don't seem to impact model output
+                finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+                
             #kick off the preview section
             #st.write("Here is a quick preview of what the results will look like when finished:")
             #st.write("Do you want to continue?")
@@ -306,15 +277,7 @@ def frontend_main():
           #  with st.spinner("**Imputation process started....**"):
            #     time.sleep(5)
             st.success('Imputation Complete!')
-            #kills off the process
-
-        #if(st.button("No")):
-         #   st.session_state.list.clear()
-          #  st.session_state.button1 = False
-            #finalOutput = backend_main(finalDF)
-
-        #finalOutput = finalDF
-
+        originalDS = originalDS.where(~inputDF_Nulls)
 
         # Create a temporary directory to save the renamed file
         temp_dir = tempfile.mkdtemp()
@@ -323,20 +286,9 @@ def frontend_main():
         # Save the renamed file to the temporary directory
         finalOutput.to_csv(new_filename, index=False)
         
-        # convert everything to strings to be safe
-        finalDF = finalDF.astype('str') 
+        finalOutput["Item Code"] = finalOutput["Item Code"].astype('int')
 
-        finalOutputMerged= pd.merge(finalDF, finalOutput, how = "left", on=["Item Code"])
-        
-        ##### METRICS AND OUTPUT #####
-        ADV_Brand_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_Brand_x'], finalOutputMerged['ADV_Brand_y'])
-        ADV_Category_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_Category_x'], finalOutputMerged['ADV_Category_y'])
-        ADV_SubCategory_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_SubCategory_x'], finalOutputMerged['ADV_SubCategory_y'])
-        ADV_ItemDescrip_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_ItemDescrip_x'], finalOutputMerged['ADV_ItemDescrip_y'])
-        ADV_ItemUPC_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_ItemUPC_x'], finalOutputMerged['ADV_ItemUPC_y'])
-        ADV_CaseUPC10_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_CaseUPC10_x'], finalOutputMerged['ADV_CaseUPC10_y'])
-        ADV_Size_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_Size_x'], finalOutputMerged['ADV_Size_y'])
-        ADV_StorePack_Accuracy = jarowinkler_similarity(finalOutputMerged['ADV_StorePack_x'], finalOutputMerged['ADV_StorePack_y'])
+        finalOutputMerged= pd.merge(originalDS, finalOutput, how = "left", on=["Item Code"])
 
         st.success(f"**File saved as {new_filename}**")
 
@@ -348,42 +300,71 @@ def frontend_main():
             key="download_button",
         )
 
+        ## Builds out the pandas data frame that identifies where the values were null and have been filled in
+        inputDFNulls = inputDF_Nulls
+        finalDFNulls = finalDF.isna()
+        finalDFNullDiff = inputDFNulls.astype(int) - finalDFNulls.astype(int)
         finalOutputDisplayed = finalOutput
 
-        def color_cells(c1,c2):
-            if c1 != c2:
-                return 'color:green; font-weight:bold'.format('black')
-            else:
-                return ''
+        # Function to apply the light green background for the missing values that were filled in
+        def apply_styles(df,mask):
+            # Create a styled DataFrame by copying the styles from the mask
+            style = pd.DataFrame('', index=df.index, columns=df.columns)  # Initialize an empty style DataFrame
+            for col in df.columns:
+                style[col] = np.where(mask[col] == 1, 'background-color: lightblue', '')
+            return style
 
-        styled_df = finalOutputDisplayed.copy()
-        #for col in finalDF.columns:
-         #   for idx in finalDF.index:
-          #      styled_df.loc[idx, col].format((color_cells(finalDF.at[idx, col], finalOutputDisplayed.at[idx, col])))
+        # Apply the style to the pandas dataframe
+        finalOutputDisplayed['ADV_ItemUPC'] = finalOutputDisplayed['ADV_ItemUPC'].astype(str)
+        styled_df = finalOutputDisplayed.style.apply(lambda x: apply_styles(finalOutputDisplayed, finalDFNullDiff), axis=None)
 
-        st.subheader("Completed Model Data")
-        st.dataframe(styled_df , column_config={
-            "Item Code": st.column_config.TextColumn(),
-            "UPCItem": st.column_config.TextColumn(),
-            "UPCCase": st.column_config.TextColumn(),
-            "ADV_ItemUPC": st.column_config.TextColumn(),
-            "ADV_CaseUPC10": st.column_config.TextColumn(),
+
+        ## This section outputs the final model data with the missing values filled in and colored green in the background to highlight where the data was filled in
+        with st.expander("**Completed Model Data**"):
+            st.dataframe(styled_df, column_config={
+                "Item Code": st.column_config.TextColumn(),
+                "UPCItem": st.column_config.TextColumn(),
+                "UPCCase": st.column_config.TextColumn(),
+                "ADV_ItemUPC": st.column_config.TextColumn(),
+                "ADV_CaseUPC10": st.column_config.TextColumn(),
                                                  },
                      hide_index=True,
                      )
-        #modelData = {
-        #            'ADV_Brand': ["{:.0%}".format(ADV_Brand_Accuracy)],
-        #             'ADV_Category': ["{:.0%}".format(ADV_Category_Accuracy)],
-        #             'ADV_SubCategory': ["{:.0%}".format(ADV_SubCategory_Accuracy)],
-        #             'ADV_ItemDescrip': ["{:.0%}".format(ADV_ItemDescrip_Accuracy)],
-        #             'ADV_ItemUPC': ["{:.0%}".format(ADV_ItemUPC_Accuracy)],
-        #             'ADV_CaseUPC10': ["{:.0%}".format(ADV_CaseUPC10_Accuracy)],
-        #             'ADV_Size': ["{:.0%}".format(ADV_Size_Accuracy)],
-        #             'ADV_StorePack': ["{:.0%}".format(ADV_StorePack_Accuracy)]
-        #             }
 
-        #ADV_Brand_Accuracy,ADV_Category_Accuracy, ADV_SubCategory_Accuracy, ADV_ItemDescrip_Accuracy,ADV_ItemUPC_Accuracy,ADV_CaseUPC10_Accuracy,ADV_Size_Accuracy, ADV_StorePack_Accuracy = st.columns(8)
-        #col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(4)
+        def calculate_Jaro(x,y):
+            return jarowinkler_similarity(str(x), str(y))
+
+        finalOutputMerged['BrandJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Brand_x'], row['ADV_Brand_y']), axis = 1)
+        finalOutputMerged['CategoryJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Category Name_x'], row['ADV_Category_y']), axis = 1)
+        finalOutputMerged['SubCategoryJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Sub Category Name_x'], row['ADV_SubCategory_y']), axis=1)
+        finalOutputMerged['ItemDescriptionJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Item Description_x'], row['ADV_ItemDescrip_y']), axis=1)
+        finalOutputMerged['UPCItemJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['UPCItem_x'], row['ADV_ItemUPC_y']), axis=1)
+        finalOutputMerged['UPCCaseJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['UPCCase_x'], row['ADV_CaseUPC10_y']), axis=1)
+        finalOutputMerged['SizeJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Size_x'], row['ADV_Size_y']), axis=1)
+        finalOutputMerged['StorePackJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Store Pack_x'], row['ADV_StorePack_y']), axis=1)
+
+        ### This section is the model accuracy metrics
+        ## First, calculate the accuracy metrics
+        ##Old version commented out here
+        #ADV_Brand_Accuracy = jarowinkler_similarity(finalOutputMerged['Brand_x'], finalOutputMerged['ADV_Brand_y'])
+        #ADV_Category_Accuracy = jarowinkler_similarity(finalOutputMerged['Category Name_x'], finalOutputMerged['ADV_Category_y'])
+        #ADV_SubCategory_Accuracy = jarowinkler_similarity(finalOutputMerged['Sub Category Name_x'], finalOutputMerged['ADV_SubCategory_y'])
+        #ADV_ItemDescrip_Accuracy = jarowinkler_similarity(finalOutputMerged['Item Description_x'], finalOutputMerged['ADV_ItemDescrip_y'])
+        #ADV_ItemUPC_Accuracy = jarowinkler_similarity(finalOutputMerged['UPCItem_x'], finalOutputMerged['ADV_ItemUPC_y'])
+        #ADV_CaseUPC10_Accuracy = jarowinkler_similarity(finalOutputMerged['UPCCase_x'], finalOutputMerged['ADV_CaseUPC10_y'])
+        #ADV_Size_Accuracy = jarowinkler_similarity(finalOutputMerged['Size_x'], finalOutputMerged['ADV_Size_y'])
+        #ADV_StorePack_Accuracy = jarowinkler_similarity(finalOutputMerged['Store Pack_x'], finalOutputMerged['ADV_StorePack_y'])
+
+        ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['BrandJaroWinkler'].mean()
+        ADV_Category_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Category_x'].isnull()]['CategoryJaroWinkler'].mean()
+        ADV_SubCategory_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_SubCategory_x'].isnull()]['SubCategoryJaroWinkler'].mean()
+        ADV_ItemDescrip_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemDescrip_x'].isnull()]['ItemDescriptionJaroWinkler'].mean()
+        ADV_ItemUPC_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemUPC_x'].isnull()]['UPCItemJaroWinkler'].mean()
+        ADV_CaseUPC10_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_CaseUPC10_x'].isnull()]['UPCCaseJaroWinkler'].mean()
+        ADV_Size_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Size_x'].isnull()]['SizeJaroWinkler'].mean()
+        ADV_StorePack_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_StorePack_x'].isnull()]['StorePackJaroWinkler'].mean()
+
+        ## Second, display the accuracy metrics
         st.subheader("Model Metrics")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("**ADV_Brand Column Accuracy %**", "{:.0%}".format(ADV_Brand_Accuracy))
@@ -395,19 +376,10 @@ def frontend_main():
         col6.metric("**ADV_CaseUPC10 Column Accuracy %**", "{:.0%}".format(ADV_CaseUPC10_Accuracy))
         col7.metric("**ADV_Size Column Accuracy %**", "{:.0%}".format(ADV_Size_Accuracy))
         col8.metric("**ADV_StorePack Column Accuracy %**", "{:.0%}".format(ADV_StorePack_Accuracy))
-        #col5.metric("ADV_Brand Column Accuracy %", ADV_ItemUPC_Accuracy)
-        #col6.metric("ADV_Brand Column Accuracy %", ADV_CaseUPC10_Accuracy)
-        #col7.metric("ADV_Brand Column Accuracy %", ADV_Size_Accuracy)
-        #col8.metric("ADV_Brand Column Accuracy %", ADV_StorePack_Accuracy)
-
-
-        #st.subheader("Model Metrics")
-        #modelMetrics = pd.DataFrame(modelData)
-        #st.dataframe(modelMetrics, hide_index=None )
-
 
         # Clean up the temporary directory when the app is done
         shutil.rmtree(temp_dir)
+
         # Save the renamed file to the temporary directory
         #finaldf.to_csv(finalFileName, index=False)
 
