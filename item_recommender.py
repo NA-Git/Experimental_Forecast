@@ -243,7 +243,7 @@ def frontend_main():
         originalDS = df_input
 
         ##pulling in the columns pairs list from the front end section above
-        # savedColumnMapping = pd.DataFrame(st.session_state["columnsList"])
+        savedColumnMapping = pd.DataFrame(st.session_state["columnsList"])
 
         #cancels imputation and let's the user start over
         if(st.button('**Cancel**', on_click=cancel_callback())):
@@ -334,36 +334,25 @@ def frontend_main():
         def calculate_Jaro(x,y):
             return jarowinkler_similarity(str(x), str(y))
 
-        finalOutputMerged['BrandJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Brand_x'], row['ADV_Brand_y']), axis = 1)
-        finalOutputMerged['CategoryJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Category Name_x'], row['ADV_Category_y']), axis = 1)
-        finalOutputMerged['SubCategoryJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Sub Category Name_x'], row['ADV_SubCategory_y']), axis=1)
-        finalOutputMerged['ItemDescriptionJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Item Description_x'], row['ADV_ItemDescrip_y']), axis=1)
-        finalOutputMerged['UPCItemJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['UPCItem_x'], row['ADV_ItemUPC_y']), axis=1)
-        finalOutputMerged['UPCCaseJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['UPCCase_x'], row['ADV_CaseUPC10_y']), axis=1)
-        finalOutputMerged['SizeJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Size_x'], row['ADV_Size_y']), axis=1)
-        finalOutputMerged['StorePackJaroWinkler'] = finalOutputMerged.apply(lambda row: calculate_Jaro(row['Store Pack_x'], row['ADV_StorePack_y']), axis=1)
-
-        ### This section is the model accuracy metrics
-        ## First, calculate the accuracy metrics
-        ##Old version commented out here
-        #ADV_Brand_Accuracy = jarowinkler_similarity(finalOutputMerged['Brand_x'], finalOutputMerged['ADV_Brand_y'])
-        #ADV_Category_Accuracy = jarowinkler_similarity(finalOutputMerged['Category Name_x'], finalOutputMerged['ADV_Category_y'])
-        #ADV_SubCategory_Accuracy = jarowinkler_similarity(finalOutputMerged['Sub Category Name_x'], finalOutputMerged['ADV_SubCategory_y'])
-        #ADV_ItemDescrip_Accuracy = jarowinkler_similarity(finalOutputMerged['Item Description_x'], finalOutputMerged['ADV_ItemDescrip_y'])
-        #ADV_ItemUPC_Accuracy = jarowinkler_similarity(finalOutputMerged['UPCItem_x'], finalOutputMerged['ADV_ItemUPC_y'])
-        #ADV_CaseUPC10_Accuracy = jarowinkler_similarity(finalOutputMerged['UPCCase_x'], finalOutputMerged['ADV_CaseUPC10_y'])
-        #ADV_Size_Accuracy = jarowinkler_similarity(finalOutputMerged['Size_x'], finalOutputMerged['ADV_Size_y'])
-        #ADV_StorePack_Accuracy = jarowinkler_similarity(finalOutputMerged['Store Pack_x'], finalOutputMerged['ADV_StorePack_y'])
-
-        ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['BrandJaroWinkler'].mean()
-        ADV_Category_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Category_x'].isnull()]['CategoryJaroWinkler'].mean()
-        ADV_SubCategory_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_SubCategory_x'].isnull()]['SubCategoryJaroWinkler'].mean()
-        ADV_ItemDescrip_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemDescrip_x'].isnull()]['ItemDescriptionJaroWinkler'].mean()
-        ADV_ItemUPC_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemUPC_x'].isnull()]['UPCItemJaroWinkler'].mean()
-        ADV_CaseUPC10_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_CaseUPC10_x'].isnull()]['UPCCaseJaroWinkler'].mean()
-        ADV_Size_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Size_x'].isnull()]['SizeJaroWinkler'].mean()
-        ADV_StorePack_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_StorePack_x'].isnull()]['StorePackJaroWinkler'].mean()
-
+        finalAccuracyMetrics = pd.DataFrame()
+    
+        for i in range(len(savedColumnMapping)):
+            finalAccuracyMetrics[savedColumnMapping.loc[i,1] + " Column Accuracy"] = np.nan
+            finalOutputMerged[savedColumnMapping.loc[i,1] + "_JaroWinkler"] = finalOutputMerged.apply(lambda row: calculate_Jaro(row[savedColumnMapping.loc[i,0] + '_x'], row[savedColumnMapping.loc[i,1] + '_y']), axis = 1)
+        
+        for i in range(len(savedColumnMapping)):
+            finalAccuracyMetrics.loc[0, savedColumnMapping.loc[i, 1] + " Column Accuracy"] = finalOutputMerged[finalOutputMerged[savedColumnMapping.loc[i, 1] + '_x'].isnull()][savedColumnMapping.loc[i, 1] + '_JaroWinkler'].mean()
+        
+        
+        ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['ADV_Brand_JaroWinkler'].mean()
+        ADV_Category_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Category_x'].isnull()]['ADV_Category_JaroWinkler'].mean()
+        ADV_SubCategory_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_SubCategory_x'].isnull()]['ADV_SubCategory_JaroWinkler'].mean()
+        ADV_ItemDescrip_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemDescrip_x'].isnull()]['ADV_ItemDescrip_JaroWinkler'].mean()
+        ADV_ItemUPC_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemUPC_x'].isnull()]['ADV_ItemUPC_JaroWinkler'].mean()
+        #ADV_CaseUPC10_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_CaseUPC10_x'].isnull()]['ADV_CaseUPC10_JaroWinkler'].mean()
+        ADV_Size_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Size_x'].isnull()]['ADV_Size_JaroWinkler'].mean()
+        ADV_StorePack_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_StorePack_x'].isnull()]['ADV_StorePack_JaroWinkler'].mean()
+        
         ## Second, display the accuracy metrics
         st.subheader("Model Metrics")
         col1, col2, col3, col4 = st.columns(4)
@@ -371,11 +360,11 @@ def frontend_main():
         col2.metric("**ADV_Category Column Accuracy %**", "{:.0%}".format(ADV_Category_Accuracy))
         col3.metric("**ADV_SubCategory Column Accuracy %**", "{:.0%}".format(ADV_SubCategory_Accuracy))
         col4.metric("**ADV_ItemDescrip Column Accuracy %**", "{:.0%}".format(ADV_ItemDescrip_Accuracy))
-        col5, col6, col7, col8 = st.columns(4)
-        col5.metric("**ADV_ItemUPC Column Accuracy %**", "{:.0%}".format(ADV_ItemUPC_Accuracy))
-        col6.metric("**ADV_CaseUPC10 Column Accuracy %**", "{:.0%}".format(ADV_CaseUPC10_Accuracy))
-        col7.metric("**ADV_Size Column Accuracy %**", "{:.0%}".format(ADV_Size_Accuracy))
-        col8.metric("**ADV_StorePack Column Accuracy %**", "{:.0%}".format(ADV_StorePack_Accuracy))
+        col1, col2, col3 = st.columns(3)
+        col1.metric("**ADV_ItemUPC Column Accuracy %**", "{:.0%}".format(ADV_ItemUPC_Accuracy))
+        #col6.metric("**ADV_CaseUPC10 Column Accuracy %**", "{:.0%}".format(ADV_CaseUPC10_Accuracy))
+        col2.metric("**ADV_Size Column Accuracy %**", "{:.0%}".format(ADV_Size_Accuracy))
+        col3.metric("**ADV_StorePack Column Accuracy %**", "{:.0%}".format(ADV_StorePack_Accuracy))
 
         # Clean up the temporary directory when the app is done
         shutil.rmtree(temp_dir)
