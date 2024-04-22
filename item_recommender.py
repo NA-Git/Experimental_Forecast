@@ -13,6 +13,7 @@ from jarowinkler import jarowinkler_similarity
 import numpy as np
 from datawig import SimpleImputer
 from mxnet.base import MXNetError
+import math
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
@@ -315,11 +316,13 @@ def frontend_main():
             return style
 
         # Apply the style to the pandas dataframe
+        # This should be ok to leave in since most item attribution data will have this feature
         finalOutputDisplayed['ADV_ItemUPC'] = finalOutputDisplayed['ADV_ItemUPC'].astype(str)
         styled_df = finalOutputDisplayed.style.apply(lambda x: apply_styles(finalOutputDisplayed, finalDFNullDiff), axis=None)
 
 
         ## This section outputs the final model data with the missing values filled in and colored green in the background to highlight where the data was filled in
+        # Same here - but maybe add a try/except block in the future just in case
         with st.expander("**Completed Model Data**"):
             st.dataframe(styled_df, column_config={
                 "Item Code": st.column_config.TextColumn(),
@@ -331,40 +334,65 @@ def frontend_main():
                      hide_index=True,
                      )
 
+        ## Calculate the accuracy metrics dynamically using Jaro-Winkler text similarity
         def calculate_Jaro(x,y):
             return jarowinkler_similarity(str(x), str(y))
 
         finalAccuracyMetrics = pd.DataFrame()
     
+        # These for loops do the actual calculation by comparing the score pre-imputation to post-imputation (x vs y)
         for i in range(len(savedColumnMapping)):
             finalAccuracyMetrics[savedColumnMapping.loc[i,1] + " Column Accuracy"] = np.nan
             finalOutputMerged[savedColumnMapping.loc[i,1] + "_JaroWinkler"] = finalOutputMerged.apply(lambda row: calculate_Jaro(row[savedColumnMapping.loc[i,0] + '_x'], row[savedColumnMapping.loc[i,1] + '_y']), axis = 1)
         
+        # Output the metrics in a dataframe to be displayed on the frontend
         for i in range(len(savedColumnMapping)):
             finalAccuracyMetrics.loc[0, savedColumnMapping.loc[i, 1] + " Column Accuracy"] = finalOutputMerged[finalOutputMerged[savedColumnMapping.loc[i, 1] + '_x'].isnull()][savedColumnMapping.loc[i, 1] + '_JaroWinkler'].mean()
         
-        
-        ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['ADV_Brand_JaroWinkler'].mean()
-        ADV_Category_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Category_x'].isnull()]['ADV_Category_JaroWinkler'].mean()
-        ADV_SubCategory_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_SubCategory_x'].isnull()]['ADV_SubCategory_JaroWinkler'].mean()
-        ADV_ItemDescrip_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemDescrip_x'].isnull()]['ADV_ItemDescrip_JaroWinkler'].mean()
-        ADV_ItemUPC_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemUPC_x'].isnull()]['ADV_ItemUPC_JaroWinkler'].mean()
-        #ADV_CaseUPC10_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_CaseUPC10_x'].isnull()]['ADV_CaseUPC10_JaroWinkler'].mean()
-        ADV_Size_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Size_x'].isnull()]['ADV_Size_JaroWinkler'].mean()
-        ADV_StorePack_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_StorePack_x'].isnull()]['ADV_StorePack_JaroWinkler'].mean()
+        # Old accuracy metric code - delete after V1
+        # ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['ADV_Brand_JaroWinkler'].mean()
+        # ADV_Category_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Category_x'].isnull()]['ADV_Category_JaroWinkler'].mean()
+        # ADV_SubCategory_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_SubCategory_x'].isnull()]['ADV_SubCategory_JaroWinkler'].mean()
+        # ADV_ItemDescrip_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemDescrip_x'].isnull()]['ADV_ItemDescrip_JaroWinkler'].mean()
+        # ADV_ItemUPC_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_ItemUPC_x'].isnull()]['ADV_ItemUPC_JaroWinkler'].mean()
+        # #ADV_CaseUPC10_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_CaseUPC10_x'].isnull()]['ADV_CaseUPC10_JaroWinkler'].mean()
+        # ADV_Size_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_Size_x'].isnull()]['ADV_Size_JaroWinkler'].mean()
+        # ADV_StorePack_Accuracy =  finalOutputMerged[finalOutputMerged['ADV_StorePack_x'].isnull()]['ADV_StorePack_JaroWinkler'].mean()
         
         ## Second, display the accuracy metrics
+        # Set up the section header and the number of columns for the metrics to be outputted in
         st.subheader("Model Metrics")
+        col_num = 0 # This is used to count iteration number later
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("**ADV_Brand Column Accuracy %**", "{:.0%}".format(ADV_Brand_Accuracy))
-        col2.metric("**ADV_Category Column Accuracy %**", "{:.0%}".format(ADV_Category_Accuracy))
-        col3.metric("**ADV_SubCategory Column Accuracy %**", "{:.0%}".format(ADV_SubCategory_Accuracy))
-        col4.metric("**ADV_ItemDescrip Column Accuracy %**", "{:.0%}".format(ADV_ItemDescrip_Accuracy))
-        col1, col2, col3 = st.columns(3)
-        col1.metric("**ADV_ItemUPC Column Accuracy %**", "{:.0%}".format(ADV_ItemUPC_Accuracy))
-        #col6.metric("**ADV_CaseUPC10 Column Accuracy %**", "{:.0%}".format(ADV_CaseUPC10_Accuracy))
-        col2.metric("**ADV_Size Column Accuracy %**", "{:.0%}".format(ADV_Size_Accuracy))
-        col3.metric("**ADV_StorePack Column Accuracy %**", "{:.0%}".format(ADV_StorePack_Accuracy))
+        output_columns = [col1, col2, col3, col4] # Needed an iterable list of these variables
+        
+       
+        # st.write(finalAccuracyMetrics) # testing
+        
+        # Dynamically loop through each column that gets imputed in and use the col list above to output metrics
+        # The n col variables can be reused
+        for i, n in enumerate(finalAccuracyMetrics.columns):
+            output_columns[col_num].metric(f"**{n} %**", "{:.0%}".format(finalAccuracyMetrics.loc[0, n]))
+            # Check to see if i has reached 4 or a number divisible by 4
+            # This means a new output row needs to be started on the frontend and the col variables can be overwritten
+            if (i + 1) % 4 == 0:
+                col_num = 0
+                pass
+            # Otherwise keep going through the loop
+            else:
+                col_num += 1
+        
+        # Old accuracy metric code - delete after V1
+        # col1, col2, col3, col4 = st.columns(4)
+        # col1.metric("**ADV_Brand Column Accuracy %**", "{:.0%}".format(ADV_Brand_Accuracy))
+        # col2.metric("**ADV_Category Column Accuracy %**", "{:.0%}".format(ADV_Category_Accuracy))
+        # col3.metric("**ADV_SubCategory Column Accuracy %**", "{:.0%}".format(ADV_SubCategory_Accuracy))
+        # col4.metric("**ADV_ItemDescrip Column Accuracy %**", "{:.0%}".format(ADV_ItemDescrip_Accuracy))
+        # col1, col2, col3 = st.columns(3)
+        # col1.metric("**ADV_ItemUPC Column Accuracy %**", "{:.0%}".format(ADV_ItemUPC_Accuracy))
+        # #col6.metric("**ADV_CaseUPC10 Column Accuracy %**", "{:.0%}".format(ADV_CaseUPC10_Accuracy))
+        # col2.metric("**ADV_Size Column Accuracy %**", "{:.0%}".format(ADV_Size_Accuracy))
+        # col3.metric("**ADV_StorePack Column Accuracy %**", "{:.0%}".format(ADV_StorePack_Accuracy))
 
         # Clean up the temporary directory when the app is done
         shutil.rmtree(temp_dir)
