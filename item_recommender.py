@@ -13,7 +13,6 @@ from jarowinkler import jarowinkler_similarity
 import numpy as np
 from datawig import SimpleImputer
 from mxnet.base import MXNetError
-import math
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
