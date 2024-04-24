@@ -231,6 +231,14 @@ def frontend_main():
                 if (len(savedColumnsDisplayed) > 0):
                     savedColumnsDisplayed.columns = ['From', 'To']
                     st.sidebar.dataframe(savedColumnsDisplayed)
+                    
+                    # Provide a download link for the column mapping
+                    st.sidebar.download_button(
+                        label="**Download Column Mapping Template**",
+                        data=savedColumnsDisplayed.to_csv(index=False),
+                        file_name=f"column_mapping_template_{uploaded_file.name}",
+                        key="download_button_cm",
+                    )
 
             else:
                 st.warning("**The uploaded CSV file is empty or has no columns.**")
