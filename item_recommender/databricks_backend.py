@@ -9,7 +9,6 @@
 # COMMAND ----------
 
 # Imports and API setup
-import dbutils
 import openai
 import pandas as pd
 import numpy as np
@@ -19,25 +18,21 @@ import time
 
 # Use newer API version here
 # Connect to the Azure key vault for API secrets
-# openai.api_key = dbutils.secrets.get(scope='adv-ds-secret', key='openai-west-key')
-# openai.api_base = dbutils.secrets.get(scope='adv-ds-secret', key='openai-west-endpoint')
-# openai.api_type = 'azure'
-# openai.api_version = '2023-12-01-preview'
+openai.api_key = dbutils.secrets.get(scope='adv-ds-secret', key='openai-west-key')
+openai.api_base = dbutils.secrets.get(scope='adv-ds-secret', key='openai-west-endpoint') 
+openai.api_type = 'azure'
+openai.api_version = '2023-12-01-preview'
 
 # Switch out deployments HERE
-deployment_name='item-recommender-main' #This will correspond to the custom name you chose for your deployment when you deployed a model.
+deployment_name='item-recommender-main' #This will correspond to the custom name you chose for your deployment when you deployed a model. 
 
 # COMMAND ----------
-#
-# iMPORT csv AND AVOID SPARK
-
-df_awg =  pd.read_csv("C:/Users/norri/Desktop/awg_item_list.csv")
 
 # Data cleaning and preprocessing
-# df_awg =  read.table("awg_item_list")
-#
-# # Convert to Pandas dataframe
-# df_awg = df_awg.toPandas()
+df_awg = spark.read.table("awg_item_list")
+
+# Convert to Pandas dataframe
+df_awg = df_awg.toPandas()
 
 # Create artifical null values - the number of nulls is higher here than in the UNFI dataset to stress test the model a bit
 # Make sure the nulls only occur in the ADV columns though!
@@ -101,8 +96,7 @@ for n, column in enumerate(target_columns):
     You do not need to explain how to impute data or your methods for imputation - just output the completed data.
   """ 
   # While loop to prevent errors if the API doesn't connect successfully
-  retries = 3
-  data_out = None
+  retries = 3    
   while retries > 0:    
     try: 
       print("Imputing...")
@@ -127,21 +121,14 @@ for n, column in enumerate(target_columns):
             time.sleep(5)  
     else:  
         print('API is not responding, all retries exhausted. Raising exception...')
-        print('API is not responding with an accuracy above 50%. Attempting another run...')
         raise ValueError("Time out error - try restarting the script and checking your connection to OpenAI Studio")
   
   # Turn the output into a Pandas series
-  # rows = pd.Series(data_out))
-  # rows = data_out.split('\n')
-  # rows = pd.Series(data_out.split('\n'))
-
-  if data_out is not None:
-      print('accuracy is below 50%')
-
-  # data_out_series = pd.Series(rows[1:], name=column)
+  rows = data_out.split('\n')
+  data_out_series = pd.Series(rows[1:], name=column)
 
   # Append the series to the output df
-  # imputed_target_df[column] = data_out_series
+  imputed_target_df[column] = data_out_series
 
 
 # COMMAND ----------
@@ -255,7 +242,4 @@ def backend_main(df_input):
 # COMMAND ----------
 
 # Test out the backend function
-# df_output = backend_main(df_input=df_awg)
-df_output = df_awg_test
-
-print('Conclusion: the backend is not yet more accurate than a coin flip.)')
+df_output = backend_main(df_input=df_awg)
