@@ -88,7 +88,7 @@ def column_Mapping_backend(column_mapping):
 def backend_plus(df_input, issues, column_mapping):
     """
     Adds nulls where user-defined or ai detected issues are found
-    Once these are added, they are imputed away using Datawig
+    Once these are added, they are imputed away using OpenAI imputation
     
     Parameters
     ----------
@@ -100,23 +100,60 @@ def backend_plus(df_input, issues, column_mapping):
     Dataframe with no null values or data inconsistencies
 
     """
-    # convert everything to strings to be safe
-    df_input = df_input.astype('str') 
+    # Now that the original nulls are filled, create new nulls where there are data issues like missing categories
+    # Do not attempt to fill UPC or Item Code columns if there are issues
+    df_input[df_input.columns[~df_input.columns.str.contains('UPC|Item Code')]].replace(issues, np.nan, inplace=True)
     
-    # Create new nulls based on frontend input
-    df_input.replace(issues, np.nan, inplace=True)
+    # Model prompt - use the column mapping from the frontend instead of manually writing the string out and pull in the entire dataset post column mapping
+    prompt = f"""
+    The following data is a sample of a dataset of product attributes called the AWG Item List: {df_input.head(300)} 
+    The missing item attribution values need to be filled in. Here's how the columns map to each other:
+    {column_mapping.to_string(sparsify=False, justify="center")}
     
-    # Run through datawig now that the first step is done - remove additional nulls
-    SimpleImputer.complete(data_frame=df_input, inplace=True
-                           ,precision_threshold=0.9
-                           ,output_path="../datawig_temp/" # Specify where model data is stored to prevent errors
-                          )
-    # Return cleaned dataframe
+    The dataset contained several issues which have been replaced with nulls. Here are the rows that contain null values:
+    {df_input[~(df_input.notna().all(axis=1))].to_string(sparsify=False, justify="center")}
+    
+    Impute these null values using the mapping formula above and the sample data as context and format your answer into a table using | to separate columns with no leading or trailing whitespaces. Do not just put NaN in the empty cells or placeholder values.
+    Only output the rows that contained null values and do not drop the index column.
+    """
+    
+    response = client.chat.completions.create(
+        model=deployment_name,
+        temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
+        messages=[
+            {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
+            {"role": "user", "content": prompt}
+            ]
+        
+        )
+    
+    # Process output from AI
+    output = response.choices[0].message.content
+
+    # Trim out the non-tabular data
+    output_start = output.find('| index |')
+    output_end = output.rfind('| INCLUDE    |')
+    
+    # StringIO converts the trimmed response string to a file pandas read_csv can convert to a dataframe
+    df_response = pd.read_csv(StringIO(output[output_start:output_end]), delimiter='|', index_col=[0, -1], skiprows=[1]) # Skip the first row where the model keeps putting dash marks, and the last row to avoid duplicates
+    
+    # Merge the response df with the input data to remove nulls. First, do some cleanup
+    df_response = df_response.rename(columns=lambda x: x.strip())
+    df_response.rename(columns={'Unnamed: 0' : 'index'}, inplace=True)
+    df_response.dropna(axis=0, inplace=True, thresh=2)
+    df_response.dropna(axis=1, inplace=True)
+    df_response['index'] = df_response['index'].astype('int64')
+    #df_response['Item Code'] = df_response['Item Code'].astype('int64')
+    df_response.reset_index(inplace=True, drop=True)
+    df_response.reindex(df_response['index'])
+    
+    # Then update and return filled data
+    df_input.update(other=df_response, overwrite=False) # In case the model made some additional changes, only update nulls in the original
     df_output = df_input.copy()
     return df_output
 
 # Function for calling the backend code
-# Input csv will be df_awg after adding nulls
+# Input csv will be df_input after adding nulls
 def backend_main(df_input, column_mapping):
     """
     Backend code for the Item Recommender placed into a single function for easy insertion into frontend code.
@@ -371,13 +408,9 @@ def frontend_main():
         with st.spinner("**Imputing...**"):
             # Column mapping imputation
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
-            # Datawig imputation
-            # Add a try-except block here to increase code stability
-            #try:
-                #finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
-            #except (FileNotFoundError,
-                   # MXNetError):  # Ignore the "directory not found" errors since they don't seem to impact model output
-                #finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            
+            # OpenAI Imputation
+            finalOutput = backend_plus(df_input=finalOutput, issues=['?'], column_mapping=savedColumnsDisplayed)
 
             # kick off the preview section
             # st.write("Here is a quick preview of what the results will look like when finished:")
