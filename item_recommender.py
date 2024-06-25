@@ -84,8 +84,8 @@ def column_Mapping_backend(column_mapping):
 
 
 # Secondary backend function for additional imputation needs
-# Datawig is used here
-def backend_plus(df_input, issues, column_mapping):
+# OpenAI is used here
+def backend_plus(df_input, column_mapping, issues=['?', 'NA', '-']):
     """
     Adds nulls where user-defined or ai detected issues are found
     Once these are added, they are imputed away using OpenAI imputation
@@ -93,7 +93,7 @@ def backend_plus(df_input, issues, column_mapping):
     Parameters
     ----------
     df_input : Pandas dataframe. Data to be imputed in.
-    issues : List of data issues found by the user or AI assistant.
+    issues : List of data issues found by the user or AI assistant. Hardcode these for now
 
     Returns
     -------
@@ -111,10 +111,15 @@ def backend_plus(df_input, issues, column_mapping):
     {column_mapping.to_string(sparsify=False, justify="center")}
     
     The dataset contained several issues which have been replaced with nulls. Here are the rows that contain null values:
-    {df_input[~(df_input.notna().all(axis=1))].to_string(sparsify=False, justify="center")}
+    {df_input[df_input.isna().all(axis=1)].to_string(sparsify=False, justify="center")}
     
     Impute these null values using the mapping formula above and the sample data as context and format your answer into a table using | to separate columns with no leading or trailing whitespaces. Do not just put NaN in the empty cells or placeholder values.
     Only output the rows that contained null values and do not drop the index column.
+    """
+    # Followup prompt in case the output token limit is hit by the initial prompt
+    # Should be a rare occurence
+    followup_prompt = """
+    Continue the output from the previous prompt.
     """
     
     response = client.chat.completions.create(
