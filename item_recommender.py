@@ -108,6 +108,13 @@ def backend_plus(df_input, column_mapping, issues=['?', 'NA', '-']):
     # Do not attempt to fill UPC or Item Code columns if there are issues
     df_input[df_input.columns[~df_input.columns.str.contains('UPC|Item Code')]].replace(issues, np.nan, inplace=True)
     
+    # If there are no issues present, then skip the rest of the function and return the df
+    if not df_input.isnull().values.any():
+        return df_input
+    
+    # Reset index to hopefully avoid issues and create an additional index column
+    df_input.reset_index(inplace=True, drop=False)
+    
     # Model prompt - use the column mapping from the frontend instead of manually writing the string out and pull in the entire dataset post column mapping
     prompt = f"""
     The following data is a sample of a dataset of product attributes called the AWG Item List: {df_input.head(300)} 
@@ -447,7 +454,7 @@ def frontend_main():
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
             
             # OpenAI Imputation
-            finalOutput = backend_plus(df_input=finalOutput, issues=['?'], column_mapping=savedColumnsDisplayed)
+            finalOutput = backend_plus(df_input=finalOutput, column_mapping=savedColumnsDisplayed)
 
             # kick off the preview section
             # st.write("Here is a quick preview of what the results will look like when finished:")
