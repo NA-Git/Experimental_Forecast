@@ -1,19 +1,23 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
 import shutil
 import tempfile
 from openai import AzureOpenAI
 from io import StringIO
+import tiktoken
 #from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-# from openai import azureopenai
 #import time
 import itertools
 import sys
 from jarowinkler import jarowinkler_similarity
 import numpy as np
-from datawig import SimpleImputer
-from mxnet.base import MXNetError
+#from datawig import SimpleImputer
+#from mxnet.base import MXNetError
+
+# Set up tiktoken encoding
+encoding = tiktoken.encoding_for_model("gpt-4o")
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
@@ -121,26 +125,54 @@ def backend_plus(df_input, column_mapping, issues=['?', 'NA', '-']):
     followup_prompt = """
     Continue the output from the previous prompt.
     """
-    
-    response = client.chat.completions.create(
-        model=deployment_name,
-        temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
-        messages=[
-            {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
-            {"role": "user", "content": prompt}
-            ]
+    # Main prompt loop - repeat until data quality is assured
+    complete = False
+    while complete == False:
+        response = client.chat.completions.create(
+            model=deployment_name,
+            temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
+            messages=[
+                {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
+                {"role": "user", "content": prompt}
+                ]
+            
+            )
         
-        )
+        # Process output from AI
+        output = response.choices[0].message.content
+        
+        # Check the token length of the output
+        # If the limit of 4096 tokens was hit, use the followup prompt to complete the output
+        if len(encoding.encode(output)) >= 4096:
+            response_followup = client.chat.completions.create(
+                model=deployment_name,
+                temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
+                messages=[
+                    {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
+                    {"role": "user", "content": followup_prompt}
+                    ]
+                
+                )
+            # Process output from AI
+            output_followup = response_followup.choices[0].message.content
+            
+            # Paste the trimmed output from the followup into the main output string
+            output_followup_cleaned = re.search(pattern='| index |(.*)| INCLUDE    |', string=output_followup).group(1)
+            output = output + output_followup_cleaned
     
-    # Process output from AI
-    output = response.choices[0].message.content
-
-    # Trim out the non-tabular data
-    output_start = output.find('| index |')
-    output_end = output.rfind('| INCLUDE    |')
-    
-    # StringIO converts the trimmed response string to a file pandas read_csv can convert to a dataframe
-    df_response = pd.read_csv(StringIO(output[output_start:output_end]), delimiter='|', index_col=[0, -1], skiprows=[1]) # Skip the first row where the model keeps putting dash marks, and the last row to avoid duplicates
+        # Trim out the non-tabular data
+        output_start = output.find('| index |')
+        output_end = output.rfind('| INCLUDE    |')
+        
+        # StringIO converts the trimmed response string to a file pandas read_csv can convert to a dataframe
+        df_response = pd.read_csv(StringIO(output[output_start:output_end]), delimiter='|', index_col=[0, -1], skiprows=[1]) # Skip the first row where the model keeps putting dash marks, and the last row to avoid duplicates
+        
+        # Check if the output has no nulls. If so, redo the api call
+        if df_response.isna().any():
+            continue
+        else:
+            complete = True
+        
     
     # Merge the response df with the input data to remove nulls. First, do some cleanup
     df_response = df_response.rename(columns=lambda x: x.strip())
