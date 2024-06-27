@@ -283,7 +283,6 @@ def frontend_main():
     saved_template_columns = []
     columnsDisplayed = []
     savedColumnsDisplayed = []
-    edited_savedColumnsDisplayed = []
     inputDF_Nulls = []
     columnsDisplayed_openAI = []
 
@@ -412,8 +411,8 @@ def frontend_main():
             if (len(savedColumnsDisplayed) > 0):
                 savedColumnsDisplayed.columns = ['From', 'To']
                 #st.sidebar.data_editor(savedColumnsDisplayed, num_rows= "dynamic")
-                edited_savedColumnsDisplayed =st.sidebar.data_editor(savedColumnsDisplayed, num_rows= "dynamic")
-                #st.sidebar.dataframe(edited_savedColumnsDisplayed)
+                savedColumnsDisplayed =st.sidebar.data_editor(savedColumnsDisplayed, num_rows= "dynamic")
+                #st.sidebar.dataframe(savedColumnsDisplayed)
                 #st.sidebar.dataframe(savedColumnsDisplayed)
 
                # st.session_state["columnsList"] =
@@ -421,7 +420,7 @@ def frontend_main():
                 # Provide a download link for the column mapping
                 st.sidebar.download_button(
                     label="**Download Column Mapping Template**",
-                    data=edited_savedColumnsDisplayed.to_csv(index=False),
+                    data=savedColumnsDisplayed.to_csv(index=False),
                     file_name=f"column_mapping_template_{uploaded_file.name}",
                     key="download_button_cm",
                 )
@@ -437,7 +436,7 @@ def frontend_main():
 
         ##pulling in the columns pairs list from the front end section above
         savedColumnMapping = pd.DataFrame(st.session_state["columnsList"])
-        st.dataframe(edited_savedColumnsDisplayed)
+        st.dataframe(savedColumnsDisplayed)
 
         # cancels imputation and let's the user start over
         if (st.button('**Cancel**', on_click=cancel_callback())):
@@ -531,17 +530,17 @@ def frontend_main():
         finalAccuracyMetrics = pd.DataFrame()
 
         # These for loops do the actual calculation by comparing the score pre-imputation to post-imputation (x vs y)
-        for i in range(len(savedColumnMapping)):
-            finalAccuracyMetrics[savedColumnMapping.loc[i, 1] + " Column Accuracy"] = np.nan
-            finalOutputMerged[savedColumnMapping.loc[i, 1] + "_JaroWinkler"] = finalOutputMerged.apply(
-                lambda row: calculate_Jaro(row[savedColumnMapping.loc[i, 0] + '_x'],
-                                           row[savedColumnMapping.loc[i, 1] + '_y']), axis=1)
+        for i in range(len(savedColumnsDisplayed)):
+            finalAccuracyMetrics[savedColumnsDisplayed.iloc[i, 1] + " Column Accuracy"] = np.nan
+            finalOutputMerged[savedColumnsDisplayed.iloc[i, 1] + "_JaroWinkler"] = finalOutputMerged.apply(
+                lambda row: calculate_Jaro(row[savedColumnsDisplayed.iloc[i, 0] + '_x'],
+                                           row[savedColumnsDisplayed.iloc[i, 1] + '_y']), axis=1)
 
         # Output the metrics in a dataframe to be displayed on the frontend
-        for i in range(len(savedColumnMapping)):
-            finalAccuracyMetrics.loc[0, savedColumnMapping.loc[i, 1] + " Column Accuracy"] = \
-            finalOutputMerged[finalOutputMerged[savedColumnMapping.loc[i, 1] + '_x'].isnull()][
-                savedColumnMapping.loc[i, 1] + '_JaroWinkler'].mean()
+        for i in range(len(savedColumnsDisplayed)):
+            finalAccuracyMetrics.loc[0, savedColumnsDisplayed.iloc[i, 1] + " Column Accuracy"] = \
+            finalOutputMerged[finalOutputMerged[savedColumnsDisplayed.iloc[i, 1] + '_x'].isnull()][
+                savedColumnsDisplayed.iloc[i, 1] + '_JaroWinkler'].mean()
 
         # Old accuracy metric code - delete after V1
         # ADV_Brand_Accuracy = finalOutputMerged[finalOutputMerged['ADV_Brand_x'].isnull()]['ADV_Brand_JaroWinkler'].mean()
