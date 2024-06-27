@@ -1,19 +1,23 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
 import shutil
 import tempfile
 from openai import AzureOpenAI
 from io import StringIO
+import tiktoken
 #from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-# from openai import azureopenai
 #import time
 import itertools
 import sys
 from jarowinkler import jarowinkler_similarity
 import numpy as np
-from datawig import SimpleImputer
-from mxnet.base import MXNetError
+#from datawig import SimpleImputer
+#from mxnet.base import MXNetError
+
+# Set up tiktoken encoding
+encoding = tiktoken.encoding_for_model("gpt-4o")
 
 # Set the streamlit page to wide format for easier viewing
 st.set_page_config(layout = "wide")
@@ -84,39 +88,116 @@ def column_Mapping_backend(column_mapping):
 
 
 # Secondary backend function for additional imputation needs
-# Datawig is used here
-def backend_plus(df_input, issues, column_mapping):
+# OpenAI is used here
+def backend_plus(df_input, column_mapping, issues=['?', 'NA', '-']):
     """
     Adds nulls where user-defined or ai detected issues are found
-    Once these are added, they are imputed away using Datawig
+    Once these are added, they are imputed away using OpenAI imputation
     
     Parameters
     ----------
     df_input : Pandas dataframe. Data to be imputed in.
-    issues : List of data issues found by the user or AI assistant.
+    issues : List of data issues found by the user or AI assistant. Hardcode these for now
 
     Returns
     -------
     Dataframe with no null values or data inconsistencies
 
     """
-    # convert everything to strings to be safe
-    df_input = df_input.astype('str') 
+    # Now that the original nulls are filled, create new nulls where there are data issues like missing categories
+    # Do not attempt to fill UPC or Item Code columns if there are issues
+    df_input[df_input.columns[~df_input.columns.str.contains('UPC|Item Code')]].replace(issues, np.nan, inplace=True)
     
-    # Create new nulls based on frontend input
-    df_input.replace(issues, np.nan, inplace=True)
+    # If there are no issues present, then skip the rest of the function and return the df
+    if not df_input.isnull().values.any():
+        return df_input
     
-    # Run through datawig now that the first step is done - remove additional nulls
-    SimpleImputer.complete(data_frame=df_input, inplace=True
-                           ,precision_threshold=0.9
-                           ,output_path="../datawig_temp/" # Specify where model data is stored to prevent errors
-                          )
-    # Return cleaned dataframe
+    # Reset index to hopefully avoid issues and create an additional index column
+    df_input.reset_index(inplace=True, drop=False)
+    
+    # Model prompt - use the column mapping from the frontend instead of manually writing the string out and pull in the entire dataset post column mapping
+    prompt = f"""
+    The following data is a sample of a dataset of product attributes called the AWG Item List: {df_input.head(300)} 
+    The missing item attribution values need to be filled in. Here's how the columns map to each other:
+    {column_mapping.to_string(sparsify=False, justify="center")}
+    
+    The dataset contained several issues which have been replaced with nulls. Here are the rows that contain null values:
+    {df_input[df_input.isna().all(axis=1)].to_string(sparsify=False, justify="center")}
+    
+    Impute these null values using the mapping formula above and the sample data as context and format your answer into a table using | to separate columns with no leading or trailing whitespaces. Do not just put NaN in the empty cells or placeholder values.
+    Only output the rows that contained null values and do not drop the index column.
+    """
+    # Followup prompt in case the output token limit is hit by the initial prompt
+    # Should be a rare occurence
+    followup_prompt = """
+    Continue the output from the previous prompt.
+    """
+    # Main prompt loop - repeat until data quality is assured
+    complete = False
+    while complete == False:
+        response = client.chat.completions.create(
+            model=deployment_name,
+            temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
+            messages=[
+                {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
+                {"role": "user", "content": prompt}
+                ]
+            
+            )
+        
+        # Process output from AI
+        output = response.choices[0].message.content
+        
+        # Check the token length of the output
+        # If the limit of 4096 tokens was hit, use the followup prompt to complete the output
+        if len(encoding.encode(output)) >= 4096:
+            response_followup = client.chat.completions.create(
+                model=deployment_name,
+                temperature=1.1, # Try raising this to suppress the "I can't generate data" response. Don't tune the top_p param while tuning this one
+                messages=[
+                    {"role": "system", "content": "You are a model used to impute missing data."}, # Try out different language to avoid imputation tactics on the part of the model
+                    {"role": "user", "content": followup_prompt}
+                    ]
+                
+                )
+            # Process output from AI
+            output_followup = response_followup.choices[0].message.content
+            
+            # Paste the trimmed output from the followup into the main output string
+            output_followup_cleaned = re.search(pattern='| index |(.*)| INCLUDE    |', string=output_followup).group(1)
+            output = output + output_followup_cleaned
+    
+        # Trim out the non-tabular data
+        output_start = output.find('| index |')
+        output_end = output.rfind('| INCLUDE    |')
+        
+        # StringIO converts the trimmed response string to a file pandas read_csv can convert to a dataframe
+        df_response = pd.read_csv(StringIO(output[output_start:output_end]), delimiter='|', index_col=[0, -1], skiprows=[1]) # Skip the first row where the model keeps putting dash marks, and the last row to avoid duplicates
+        
+        # Check if the output has no nulls. If so, redo the api call
+        if df_response.isna().any():
+            continue
+        else:
+            complete = True
+        
+    
+    # Merge the response df with the input data to remove nulls. First, do some cleanup
+    df_response = df_response.rename(columns=lambda x: x.strip())
+    df_response.rename(columns={'Unnamed: 0' : 'index'}, inplace=True)
+    df_response.dropna(axis=0, inplace=True, thresh=2)
+    df_response.dropna(axis=1, inplace=True)
+    df_response['index'] = df_response['index'].astype('int64')
+    #df_response['Item Code'] = df_response['Item Code'].astype('int64')
+    df_response.reset_index(inplace=True, drop=True)
+    df_response.reindex(df_response['index'])
+    
+    # Then update and return filled data
+    df_input.update(other=df_response, overwrite=False) # In case the model made some additional changes, only update nulls in the original
     df_output = df_input.copy()
     return df_output
 
 # Function for calling the backend code
-# Input csv will be df_awg after adding nulls
+# Input csv will be df_input after adding nulls
 def backend_main(df_input, column_mapping):
     """
     Backend code for the Item Recommender placed into a single function for easy insertion into frontend code.
@@ -371,13 +452,9 @@ def frontend_main():
         with st.spinner("**Imputing...**"):
             # Column mapping imputation
             finalOutput = backend_main(df_input=finalDF, column_mapping=savedColumnsDisplayed)
-            # Datawig imputation
-            # Add a try-except block here to increase code stability
-            #try:
-                #finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
-            #except (FileNotFoundError,
-                   # MXNetError):  # Ignore the "directory not found" errors since they don't seem to impact model output
-                #finalOutput = backend_plus(df_input=finalOutput, issues=['0'], column_mapping=savedColumnsDisplayed)
+            
+            # OpenAI Imputation
+            finalOutput = backend_plus(df_input=finalOutput, column_mapping=savedColumnsDisplayed)
 
             # kick off the preview section
             # st.write("Here is a quick preview of what the results will look like when finished:")
